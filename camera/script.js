@@ -1,7 +1,7 @@
 // --- 設定値 ---
 const WIDTH = 640;
 const HEIGHT = 480;
-const FPS = 30; // フレームレート
+const FPS = 30; 
 const BRIGHTNESS_THRESHOLD = 200; 
 const DIFF_THRESHOLD = 20;        
 const MIN_MOVEMENT_PIXELS = 100;  
@@ -14,6 +14,7 @@ const ctxOriginal = canvasOriginal.getContext('2d');
 const ctxDiff = canvasDiff.getContext('2d');
 const statusDiv = document.getElementById('status');
 
+// Canvasサイズを設定
 canvasOriginal.width = WIDTH;
 canvasOriginal.height = HEIGHT;
 canvasDiff.width = WIDTH;
@@ -21,24 +22,26 @@ canvasDiff.height = HEIGHT;
 
 // --- 追跡に必要な変数 ---
 let previousFrameData = null; 
-let intervalId = null; // 追跡処理のインターバルID
+let intervalId = null; 
 
 // -------------------------------------------------------------------
-// 🎥 ステップ1: カメラのセットアップ（外カメラ優先）
+// 🎥 ステップ1: カメラのセットアップ（外カメラ優先とエラー処理強化）
 // -------------------------------------------------------------------
 async function setupCamera() {
-    // 追跡処理が既に実行中の場合は停止
+    // 追跡処理が既に実行中の場合は停止し、リセット
     if (intervalId) {
         clearInterval(intervalId);
         intervalId = null;
     }
-    
+    previousFrameData = null; // 前フレームデータもリセット
+
     // 1. 外カメラ指定の制約 (idealを使用し、柔軟性を確保)
     let constraints = {
         video: { 
+            // 解像度は ideal で指定し、外カメラがサポートする範囲に合わせる
             width: { ideal: WIDTH }, 
             height: { ideal: HEIGHT },
-            facingMode: { exact: 'environment' } // 外カメラを理想値として要求
+            facingMode: { ideal: 'environment' } // 外カメラを理想値として要求
         }
     };
 
@@ -51,27 +54,27 @@ async function setupCamera() {
         
         // 追跡処理を開始
         video.onloadedmetadata = () => {
-            statusDiv.textContent = 'カメラ起動成功。追跡を開始します。';
+            statusDiv.textContent = 'カメラ起動成功。外カメラで追跡を開始します。';
             intervalId = setInterval(processFrame, 1000 / FPS); 
         };
         
     } catch (err) {
         console.error("外カメラ (ideal) での起動に失敗しました。詳細:", err);
-        statusDiv.textContent = 'エラー: カメラ起動に失敗。内カメラを試します...';
+        statusDiv.textContent = 'エラー: 外カメラ起動失敗。内カメラを試みます...';
         
-        // 2. 外カメラが利用できない/エラーの場合、内カメラでフォールバックを試みる（デバッグ用）
+        // 2. 外カメラが利用できない/エラーの場合、内カメラでのフォールバックを試みる
         try {
-            constraints.video.facingMode = { ideal: 'user' };
+            constraints.video.facingMode = { ideal: 'user' }; // 内カメラに切り替え
             const stream = await navigator.mediaDevices.getUserMedia(constraints);
             
             video.srcObject = stream;
             video.play();
             video.onloadedmetadata = () => {
-                statusDiv.textContent = '内カメラで起動しました（外カメラエラー）。';
+                statusDiv.textContent = '内カメラで起動しました（外カメラエラー）。動作確認してください。';
                 intervalId = setInterval(processFrame, 1000 / FPS);
             };
         } catch (fallbackErr) {
-             console.error("カメラへのアクセス権限がないか、デバイスにカメラがありません:", fallbackErr);
+             console.error("内カメラでの起動にも失敗しました:", fallbackErr);
              statusDiv.textContent = '致命的なエラー: カメラへのアクセス権限がないか、デバイスがサポートしていません。';
         }
     }
@@ -90,7 +93,7 @@ function processFrame() {
     const imageDataOriginal = ctxOriginal.getImageData(0, 0, WIDTH, HEIGHT);
     const dataOriginal = imageDataOriginal.data;
     
-    // 2. 輝度フィルタリング
+    // 2. 輝度フィルタリング (明るい部分の抽出)
     const currentBrightFrame = new Uint8Array(WIDTH * HEIGHT);
     
     for (let i = 0; i < dataOriginal.length; i += 4) {
@@ -143,7 +146,7 @@ function processFrame() {
             
             statusDiv.textContent = `追跡中: 中心座標 (${centerX}, ${centerY})`;
 
-            // 重心を視覚的に表示
+            // 重心を視覚的に表示 (赤い丸)
             ctxOriginal.fillStyle = 'red';
             ctxOriginal.beginPath();
             ctxOriginal.arc(centerX, centerY, 10, 0, 2 * Math.PI);
