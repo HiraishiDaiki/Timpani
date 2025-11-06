@@ -38,7 +38,7 @@ async function setupCamera() {
         video: { 
             width: { ideal: WIDTH }, 
             height: { ideal: HEIGHT },
-            facingMode: { ideal: 'environment' } // 外カメラを理想値として要求
+            facingMode: { exact: 'environment' } // 外カメラを理想値として要求
         }
     };
 
