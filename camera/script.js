@@ -13,6 +13,7 @@ const canvasDiff = document.getElementById('canvas-diff');
 const ctxOriginal = canvasOriginal.getContext('2d');
 const ctxDiff = canvasDiff.getContext('2d');
 const statusDiv = document.getElementById('status');
+const lightBtn = document.getElementById('light-btn');
 
 // Canvasサイズを設定
 canvasOriginal.width = WIDTH;
@@ -23,6 +24,7 @@ canvasDiff.height = HEIGHT;
 // --- 追跡に必要な変数 ---
 let previousFrameData = null; 
 let intervalId = null; 
+let isLightOn = false;
 
 // -------------------------------------------------------------------
 // カメラのセットアップ
@@ -80,6 +82,46 @@ async function setupCamera() {
     }
 }
 
+// -------------------------------------------------------------------
+// ライトのON/OFF切り替え
+// -------------------------------------------------------------------
+async function toggleLight(){
+  const stream = video.srcObject;
+  if(!stream) return;
+
+  // ビデオトラックを取得
+  const track = stream.getVideoTracks()[0];
+
+  // デバイスがライト二対応しているか確認
+  const capabilities = track.getCapabilities();
+  if(!capabilities.torch){
+    alert('この端末またはカメラはライトの点灯に対応していません。');
+    return;
+  }
+
+  try {
+    // ライトの状態を反転
+    isLightOn = !isLightOn
+
+    // 制約を適用してライトをオン/オフ
+    await track.applyConstraints({
+      advanced:[{torch: isLightOn}]
+    });
+
+    // ボタンの文字を更新
+    lightBtn.textContent = isLightOn ? 'ライト消灯':'ライト点灯';
+    
+  } catch(err){
+    console.log('ライトの切り替えに失敗しました：'err);
+    statusDiv.textContent = 'エラー：ライト操作に失敗しました'
+    isLightOn = !isLightOn
+  }
+}
+
+//ボタンにクリックイベントを追加
+if(lightBtn){
+  lightBtn.addEventListener('click',toggleLight);
+}
 
 // -------------------------------------------------------------------
 // メインの追跡処理関数
