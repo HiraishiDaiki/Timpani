@@ -51,6 +51,9 @@ async function setupCamera() {
         // 成功したら、ストリームを設定して再生
         video.srcObject = stream;
         video.play();
+
+        // ライトを点灯させる
+        toggleTorch(stream, true);
         
         // 追跡処理を開始
         video.onloadedmetadata = () => {
