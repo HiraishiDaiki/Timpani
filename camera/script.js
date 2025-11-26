@@ -1,65 +1,3 @@
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>光の動きトラッカー（ライト付き）</title>
-    <!-- Tailwind CSS を読み込み -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        /* ビデオ要素を非表示にして、キャンバスの背後で実行させる */
-        #video {
-            display: none;
-        }
-        /* キャンバスを重ねて配置するためのコンテナ */
-        .canvas-container {
-            position: relative;
-            width: 640px; /* WIDTH と合わせる */
-            height: 480px; /* HEIGHT と合わせる */
-            margin: 0 auto;
-            border: 2px solid #3b82f6;
-            border-radius: 0.5rem;
-            overflow: hidden;
-        }
-        /* キャンバスを絶対位置で重ねる */
-        #canvas-original, #canvas-diff {
-            position: absolute;
-            top: 0;
-            left: 0;
-        }
-        /* オリジナルキャンバスは透過しない */
-        #canvas-original {
-            z-index: 10;
-        }
-        /* 差分キャンバスは半透明にし、動きだけを重ねて表示 */
-        #canvas-diff {
-            z-index: 20;
-            opacity: 0.8; 
-        }
-    </style>
-</head>
-<body class="bg-gray-50 flex flex-col items-center justify-center min-h-screen p-4 font-sans">
-
-    <header class="mb-6 text-center">
-        <h1 class="text-3xl font-extrabold text-blue-600 mb-2">📹 動作追跡デモ</h1>
-        <p class="text-gray-500">外カメラ起動時に自動でライトが点灯します。</p>
-    </header>
-
-    <div class="canvas-container shadow-2xl">
-        <!-- 元の映像を表示するキャンバス -->
-        <canvas id="canvas-original"></canvas>
-        <!-- 差分（動き）を表示するキャンバス -->
-        <canvas id="canvas-diff"></canvas>
-        <!-- カメラ映像のソース（非表示） -->
-        <video id="video" playsinline muted></video>
-    </div>
-
-    <!-- ステータス表示領域 -->
-    <div id="status" class="mt-6 p-4 w-full max-w-lg bg-white border border-gray-200 rounded-lg shadow-md text-sm text-center text-gray-700">
-        カメラを起動中です...
-    </div>
-
-    <script>
 // --- 設定値 ---
 const WIDTH = 640;
 const HEIGHT = 480;
@@ -85,36 +23,6 @@ canvasDiff.height = HEIGHT;
 // --- 追跡に必要な変数 ---
 let previousFrameData = null; 
 let intervalId = null; 
-
-// -------------------------------------------------------------------
-// 【追加機能】ライトのON/OFFを切り替えるヘルパー関数
-// -------------------------------------------------------------------
-/**
- * カメラストリームのトーチ（ライト）をONまたはOFFにします。
- * @param {MediaStream} stream - カメラストリーム
- * @param {boolean} state - trueでON、falseでOFF
- */
-function toggleTorch(stream, state) {
-    // 最初のビデオトラックを取得
-    const track = stream.getVideoTracks()[0];
-    const capabilities = track.getCapabilities();
-
-    // 1. デバイスがトーチ機能をサポートしているか確認
-    if (capabilities.torch) {
-        // 2. 制約を適用してトーチの状態を変更
-        track.applyConstraints({
-            advanced: [{ torch: state }]
-        }).then(() => {
-            console.log(`Torch is ${state ? 'ON' : 'OFF'}`);
-        }).catch(err => {
-            console.error("Failed to toggle torch:", err);
-            statusDiv.textContent += ` (ライト操作失敗)`;
-        });
-    } else {
-        console.warn("Torch capability not supported on this device/track.");
-    }
-}
-
 
 // -------------------------------------------------------------------
 // カメラのセットアップ
@@ -144,12 +52,9 @@ async function setupCamera() {
         video.srcObject = stream;
         video.play();
         
-        // 🚨 【変更点】ライトを点灯させる
-        toggleTorch(stream, true);
-
         // 追跡処理を開始
         video.onloadedmetadata = () => {
-            statusDiv.textContent = 'カメラ起動成功。外カメラで追跡を開始します。(ライトON)';
+            statusDiv.textContent = 'カメラ起動成功。外カメラで追跡を開始します。';
             intervalId = setInterval(processFrame, 1000 / FPS); 
         };
         
@@ -164,12 +69,8 @@ async function setupCamera() {
             
             video.srcObject = stream;
             video.play();
-
-            // 🚨 【変更点】フォールバック成功時にもライトを点灯させる
-            toggleTorch(stream, true);
-
             video.onloadedmetadata = () => {
-                statusDiv.textContent = '内カメラで起動しました（外カメラエラー）。動作確認してください。(ライトON)';
+                statusDiv.textContent = '内カメラで起動しました（外カメラエラー）。動作確認してください。';
                 intervalId = setInterval(processFrame, 1000 / FPS);
             };
         } catch (fallbackErr) {
@@ -181,7 +82,7 @@ async function setupCamera() {
 
 
 // -------------------------------------------------------------------
-// メインの追跡処理関数 (変更なし)
+// メインの追跡処理関数
 // -------------------------------------------------------------------
 function processFrame() {
     if (video.paused || video.ended) return;
@@ -248,7 +149,7 @@ function processFrame() {
             const centerX = Math.round(totalX / diffPixelsCount);
             const centerY = Math.round(totalY / diffPixelsCount);
             
-            statusDiv.textContent = `動作検出中: ピクセル数 ${diffPixelsCount}、重心 (${centerX}, ${centerY})`;
+            statusDiv.textContent = `動作検出中`;
 
             // 重心を視覚的に表示 (赤い丸)
             ctxOriginal.fillStyle = 'red';
@@ -269,7 +170,6 @@ function processFrame() {
 // -------------------------------------------------------------------
 // 処理開始
 // -------------------------------------------------------------------
-window.onload = setupCamera; // ページロード完了後にカメラセットアップを開始
-    </script>
-</body>
-</html>
+setupCamera();
+
+これに、動作開始時にスマートフォンのライトを点灯させる機能を柄試合
