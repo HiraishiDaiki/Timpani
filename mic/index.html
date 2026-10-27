@@ -30,47 +30,74 @@
             
             <div class="controls box">
                 <div class="device-select-group">
-                    <label for="audioSource">入力デバイス:</label>
+                    <label for="audioSource">Input Device:</label>
                     <select id="audioSource"></select>
                 </div>
-                <button id="startBtn">マイク入力を開始</button>
-                <div id="status">開始ボタンを押してください</div>
+                <button id="startBtn">Start</button>
+                <div id="status">Press Start Button</div>
             </div>
 
             <div class="box">
-                <label for="delayInput">L/R 遅延補正 (位相合わせ): <span id="delayValue">0.0</span> ms</label>
+                <label for="delayInput">L/R Delay Compensation: <span id="delayValue">0.0</span> ms</label>
                 <input type="range" id="delayInput" min="-5" max="5" step="0.1" value="0">
             </div>
 
             <div class="box">
-                <label>減衰曲線 (L² + R²)</label>
-                <canvas id="ampCanvas" width="600" height="200"></canvas>
-                <button class="saveBtn" data-canvas-id="ampCanvas">減衰曲線を保存</button>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                    <label style="margin: 0;">Decay Curve</label>
+
+                    <label style="font-size: 0.9em; margin: 0; display: flex; align-items: center; cursor: pointer;">
+                            <input type="checkbox" id="autoStopCheck" style="margin-right: 4px;">
+                            Auto Stop
+                    </label>
+
+                    <select id="decayModeSelect" style="padding: 3px;">
+                        <option value="combined">二乗和 (L² + R²)</option>
+                        <option value="separate">個別 (L / R 別画面)</option>
+                    </select>
+                </div>
+
+                <!-- 二乗和モード用の画面 -->
+                <div id="decayCombinedContainer">
+                    <canvas id="ampCanvas" width="600" height="300"></canvas>
+                    <button class="saveBtn" data-canvas-id="ampCanvas">Save Decay Curve</button>
+                </div>
+
+                <!-- 個別モード用の画面（初期状態は display: none で隠しておく） -->
+                <div id="decaySeparateContainer" style="display: none;">
+                    <label style="font-size: 0.9em; margin-bottom: 2px;">MIC 1 (L)</label>
+                    <canvas id="ampCanvasL" width="600" height="300"></canvas>
+                    <button class="saveBtn" data-canvas-id="ampCanvasL">Save L Curve</button>
+
+                    <label style="font-size: 0.9em; margin-top: 10px; margin-bottom: 2px; display: block;">MIC 2 (R)</label>
+                    <canvas id="ampCanvasR" width="600" height="300"></canvas>
+                    <button class="saveBtn" data-canvas-id="ampCanvasR">Save R Curve</button>
+                </div>
             </div>
 
             <div class="box">
                 <details class="accordion" open>
-                    <summary>周波数スペクトル (L / R)</summary>
+                    <summary>Frequency(L / R)</summary>
                     <label>frequencyL</label>
                     <canvas id="frequencyCanvasL" width="600" height="200"></canvas>
+                    <button class="saveBtn" data-canvas-id="frequencyCanvasL">Save L </button>
                     <label>frequencyR</label>
                     <canvas id="frequencyCanvasR" width="600" height="200"></canvas>
-                    <button class="saveBtn" data-canvas-id="frequencyCanvasL">Lを保存</button>
-                    <button class="saveBtn" data-canvas-id="frequencyCanvasR">Rを保存</button>
+                    <button class="saveBtn" data-canvas-id="frequencyCanvasR">Save R</button>
                 </details>
             </div>
 
             <div class="settings-panel box">
                 <div class="control-group">
-                    <label for="freqInput">中心周波数 (Hz)</label>
+                    <label for="freqInput">Target Frequency (Hz)</label>
                     <input type="number" id="freqInput" min="20" max="1000" value="135" step="1">
                 </div>
                 <div class="control-group">
-                    <label for="bwInput">バンド幅 (Hz)</label>
-                    <input type="number" id="bwInput" min="1" max="100" value="5" step="1">
+                    <label for="bwInput">Band width (Hz)</label>
+                    <input type="number" id="bwInput" min="1" max="100" value="0" step="1">
                 </div>
                 <div class="control-group">
-                    <label for="gainInput">表示ゲイン (Zoom)</label>
+                    <label for="gainInput">Display Gain</label>
                     <input type="number" id="gainInput" min="1.0" max="100.0" value="5.0" step="0.5">
                 </div>
             </div>

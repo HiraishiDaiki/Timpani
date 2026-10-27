@@ -14,6 +14,7 @@ let currentSweap = [];
 let previousSweep = [];
 
 let filterL, filterR;
+let filterLh,filterRh;
 let dataArrayL, dataArrayR;
 let delayNodeL, delayNodeR;
 
@@ -26,11 +27,21 @@ let isRunning = false;
 
 // 設定値
 let targetFreq = 135;
-let bandwidth = 20;
-let visualGain = 5.0; 
+let bandwidth = 0;
+let visualGain = 1.0; 
 
 // スペクトル表示の上限周波数 (Hz)
-const MAX_DISPLAY_FREQ = 1000; 
+const MAX_DISPLAY_FREQ = 1000;
+
+// 減衰曲線のモードと履歴配列
+let decayMode = 'combined'; // 'combined' か 'separate' が入る
+let autoStopAtEdge = false;
+let currentSweepCombined = [];
+let previousSweepCombined = [];
+let currentSweepL = [];
+let previousSweepL = [];
+let currentSweepR = [];
+let previousSweepR = [];
 
 // ==========================================
 // DOM要素
@@ -41,14 +52,25 @@ const ctx = canvas.getContext('2d');
 const freqCanvasL = document.getElementById('frequencyCanvasL');
 const freqCtxL = freqCanvasL.getContext('2d');
 // Canvas解像度設定
-freqCanvasL.width = 600;
-freqCanvasL.height = 200;
+// freqCanvasL.width = 600;
+// freqCanvasL.height = 200;
 
 const freqCanvasR = document.getElementById('frequencyCanvasR');
 const freqCtxR = freqCanvasR.getContext('2d');
 // Canvas解像度設定
-freqCanvasR.width = 600;
-freqCanvasR.height = 200;
+// freqCanvasR.width = 600;
+// freqCanvasR.height = 200;
+
+
+const ampCanvasL = document.getElementById('ampCanvasL');
+const ampCtxL = ampCanvasL ? ampCanvasL.getContext('2d') : null;
+
+const ampCanvasR = document.getElementById('ampCanvasR');
+const ampCtxR = ampCanvasR ? ampCanvasR.getContext('2d') : null;
+
+const decayCombinedContainer = document.getElementById('decayCombinedContainer');
+const decaySeparateContainer = document.getElementById('decaySeparateContainer');
+
 
 const startBtn = document.getElementById('startBtn');
 const statusDiv = document.getElementById('status');
@@ -120,8 +142,10 @@ async function setupAudio() {
         source.connect(splitter);
 
         // --- フィルタ作成 ---
-        filterL = createBandpassFilter();
-        filterR = createBandpassFilter();
+        filterL = createLowpassFilter(); //createBandpassFilter();
+        filterR = createLowpassFilter();//createBandpassFilter();
+        filterLh = createHighpassFilter();
+        filterRh = createHighpassFilter();
 
         // --- 遅延ノードの作成 ---
         delayNodeL = audioContext.createDelay(1.0);
@@ -132,8 +156,8 @@ async function setupAudio() {
         // 1. リサージュ用 (フィルタ後の音を見る)
         analyserL = audioContext.createAnalyser();
         analyserR = audioContext.createAnalyser();
-        analyserL.fftSize = 2048*4; 
-        analyserR.fftSize = 2048*4;
+        analyserL.fftSize = 32768 / 8; 
+        analyserR.fftSize = 32768 / 8;
         analyserL.smoothingTimeConstant = 0; 
         analyserR.smoothingTimeConstant = 0;
 
@@ -160,8 +184,12 @@ async function setupAudio() {
         delayNodeL.connect(filterL); 
         delayNodeR.connect(filterR); 
 
-        filterL.connect(analyserL);
-        filterR.connect(analyserR);
+        filterL.connect(filterLh);
+        filterR.connect(filterRh);
+
+        filterLh.connect(analyserL);
+        filterRh.connect(analyserR);
+
 
         // データ配列の準備
         // リサージュ用
@@ -183,8 +211,12 @@ async function setupAudio() {
 
         // スタート時に減衰曲線のリセットを行う。
         startTime = Date.now();
-        currentSweap = [];
-        previousSweep = [];
+        currentSweepCombined = [];
+        previousSweepCombined = [];
+        currentSweepL = [];
+        previousSweepL = [];
+        currentSweepR = [];
+        previousSweepR = [];
         
         draw(); 
 
@@ -194,24 +226,50 @@ async function setupAudio() {
     }
 }
 
-function createBandpassFilter() {
+function createLowpassFilter(){
     const filter = audioContext.createBiquadFilter();
-    filter.type = "bandpass";
+    filter.type = "lowpass";
     return filter;
 }
+
+function createHighpassFilter(){
+    const filter = audioContext.createBiquadFilter();
+    filter.type = "highpass";
+    return filter;
+}
+
+// function createBandpassFilter() {
+//     const filter = audioContext.createBiquadFilter();
+//     filter.type = "bandpass";
+//     return filter;
+// }
 
 function updateFilters() {
     if (!filterL || !filterR) return;
 
-    const safeBw = Math.max(1, bandwidth);
-    const qValue = targetFreq / safeBw;
+    const safeBw = 1; //Math.max(1, bandwidth);
+    const qValue = 20; //targetFreq / safeBw;
     const currentTime = audioContext.currentTime;
     
-    filterL.frequency.setTargetAtTime(targetFreq, currentTime, 0.01);
+    filterL.frequency.setTargetAtTime(targetFreq + bandwidth / 2, currentTime, 0.01);
     filterL.Q.setTargetAtTime(qValue, currentTime, 0.01);
+    filterLh.frequency.setTargetAtTime(targetFreq - bandwidth / 2, currentTime, 0.01);
+    filterLh.Q.setTargetAtTime(qValue, currentTime, 0.01);
     
-    filterR.frequency.setTargetAtTime(targetFreq, currentTime, 0.01);
+    filterR.frequency.setTargetAtTime(targetFreq + bandwidth / 2, currentTime, 0.01);
     filterR.Q.setTargetAtTime(qValue, currentTime, 0.01);
+    filterRh.frequency.setTargetAtTime(targetFreq - bandwidth / 2, currentTime, 0.01);
+    filterRh.Q.setTargetAtTime(qValue, currentTime, 0.01);
+
+    // const safeBw = Math.max(1, bandwidth);
+    // const qValue = targetFreq / safeBw;
+    // const currentTime = audioContext.currentTime;
+    
+    // filterL.frequency.setTargetAtTime(targetFreq, currentTime, 0.01);
+    // filterL.Q.setTargetAtTime(qValue, currentTime, 0.01);
+    
+    // filterR.frequency.setTargetAtTime(targetFreq, currentTime, 0.01);
+    // filterR.Q.setTargetAtTime(qValue, currentTime, 0.01);
 }
 
 // 遅延ノードの時間を更新する関数
@@ -290,7 +348,58 @@ function draw() {
     analyserSpectrumL.getByteFrequencyData(freqDataArrayL);
     analyserSpectrumR.getByteFrequencyData(freqDataArrayR);
 
+
+    // 二次関数によるピーク周波数（(1,1)モード）の推定
     const nyquist = audioContext.sampleRate / 2;
+    const searchMinIdx = Math.floor((60 / nyquist) * freqBufferLengthL);
+    const searchMaxIdx = Math.floor((300 / nyquist) * freqBufferLengthL);
+
+    let firstindexL = 0, maxValL = -1;
+    let firstindexR = 0, maxValR = -1;
+
+    // ① LとRそれぞれで一番高い場所（ピーク）を探す
+    for (let i = searchMinIdx; i <= searchMaxIdx; i++) {
+        // 左マイク(L)のピーク探索
+        if (freqDataArrayL[i] > maxValL) {
+            maxValL = freqDataArrayL[i];
+            firstindexL = i;
+        }
+        // 右マイク(R)のピーク探索
+        if (freqDataArrayR[i] > maxValR) {
+            maxValR = freqDataArrayR[i];
+            firstindexR = i;
+        }
+    }
+
+    // 二次関数補間を行う関数
+    function getPeakFreq(index, maxV, dataArray, bufferLen, sRate, fSize) {
+        if (index > 0 && index < bufferLen - 1 && maxV > 0) {
+            let x1 = index * sRate / fSize;
+            let y1 = dataArray[index];
+            let x2 = (index - 1) * sRate / fSize;
+            let y2 = dataArray[index - 1];
+            let x3 = (index + 1) * sRate / fSize;
+            let y3 = dataArray[index + 1];
+
+            let denominator = (x1 - x2) * (x1 - x3) * (x2 - x3);
+            if (denominator !== 0) {
+                let a = (y1 * (x2 - x3) + y2 * (x3 - x1) + y3 * (x1 - x2)) / denominator;
+                let b = (y1 * (x3**2 - x2**2) + y2 * (x1**2 - x3**2) + y3 * (x2**2 - x1**2)) / denominator;
+                return -b / (2 * a); // 頂点のX座標（周波数）
+            }
+            return x1;
+        }
+        return 0;
+    }
+
+    // LとRそれぞれのピーク周波数を計算
+    let sRate = audioContext.sampleRate;
+    let fSize = analyserSpectrumL.fftSize;
+
+    let vertexX_L = getPeakFreq(firstindexL, maxValL, freqDataArrayL, freqBufferLengthL, sRate, fSize);
+    let vertexX_R = getPeakFreq(firstindexR, maxValR, freqDataArrayR, freqBufferLengthR, sRate, fSize);
+    // ==========================================
+
     const maxIndex = Math.floor((MAX_DISPLAY_FREQ / nyquist) * freqBufferLengthL);
     const barWidth = fw / maxIndex;
 
@@ -314,86 +423,155 @@ function draw() {
 
         x += barWidth;
     }
+
+   
+
     
     // ガイドライン（これはフィルタの中心周波数を示す）
     drawFreqGuide(targetFreq);
 
+    if (vertexX_L > 0) {
+        freqCtxL.fillStyle = "rgba(0, 0, 0, 1)";
+        freqCtxL.font = "bold 16px 'Times New Roman', serif";
+        freqCtxL.fillText("L (1,1)mode Peak: " + vertexX_L.toFixed(2) + " Hz", 10, 30);
+    }
+    if (vertexX_R > 0) {
+        freqCtxR.fillStyle = "rgba(0, 0, 0, 1)";
+        freqCtxR.font = "bold 16px 'Times New Roman', serif";
+        freqCtxR.fillText("R (1,1)mode Peak: " + vertexX_R.toFixed(2) + " Hz", 10, 30);
+    }
+
     // ==========================================
-    // --- 3. 振幅（二乗和：トータルパワー）の推移を描画 ---
+    // --- 3. 振幅（モード切り替え対応）の推移を描画 ---
     // ==========================================
     if (ampCtx) {
+        
         const aw = ampCanvas.width;
         const ah = ampCanvas.height;
 
-        // 背景クリア
-        ampCtx.fillStyle = '#f0f0f0';
+        ampCtx.fillStyle = '#ffffff';
         ampCtx.fillRect(0,0,aw,ah);
 
-        // --- 1.FFTデータから targetFreq の高さを取得する
+        // ★ targetFreq に対応する FFT のインデックスを計算する
         const nyquist = audioContext.sampleRate / 2;
-        // targetFreq に対応する配列のインデックスを取得する
-        const targetIndex = Math.floor((targetFreq / nyquist) * freqBufferLengthL);
+        // ※スペクトル用アナライザ(analyserSpectrumL)のfftSizeを使用
+        const fSize = analyserSpectrumL.fftSize; 
+        const targetIndex = Math.floor((targetFreq / nyquist) * (fSize / 2));
 
-        // 左右のグラフの高さを取得し0-1の間に正規化
-        const valL = freqDataArrayL[targetIndex] / 255.0;
-        const valR = freqDataArrayR[targetIndex] / 255.0;
+        // FFTデータ（0〜255）から、指定周波数の高さを直接取得して 0.0〜1.0 に正規化
+        let rawValL = 0;
+        let rawValR = 0;
+        
+        if (targetIndex >= 0 && targetIndex < freqDataArrayL.length) {
+            rawValL = freqDataArrayL[targetIndex] / 255.0;
+            rawValR = freqDataArrayR[targetIndex] / 255.0;
+        }
 
-       // --- 2. 二乗和（トータルパワー）の計算 ---
-        // 10のべき乗(Math.pow)を使って、dBを一度「純粋なエネルギー(振幅の二乗)」に戻す
-        const energyL = Math.pow(10, valL * 5); 
-        const energyR = Math.pow(10, valR * 5);
+        // ゲインをかける
+        rawValL = Math.min(rawValL * visualGain, 1.0);
+        rawValR = Math.min(rawValR * visualGain, 1.0);
 
-        // 二つのマイクのエネルギーの和（二乗和）をとる
-        const totalEnergy = energyL + energyR;
+        // 【A】二乗和（Combined）の計算：個別の値を二乗して足してルートを取る
+        let powerCombined = Math.sqrt((rawValL * rawValL) + (rawValR * rawValR));
+        if (powerCombined > 1.0) powerCombined = 1.0;
 
-        // --- 3. 再び対数(dB)に戻して減衰直線にする ---
-        // 2つのマイクの最大値が1.0に収まるように割ってからlogをとる
-        let power = Math.log10(totalEnergy / 2) / 5;
+        // 【B】個別（L / R）の値
+        let powerL = rawValL;
+        let powerR = rawValR;
 
-        // ゲインをかけて、画面の表示(1.0)を突き抜けないように制限する
-        //power = Math.min(power * visualGain, 1.0);
+        const yPosCombined = ah - (powerCombined * ah);
+        const yPosL = ah - (powerL * ah);
+        const yPosR = ah - (powerR * ah);
 
-        // Y座標を計算
-        const yPos = ah - (power * ah);
-
-        // --- 3. X座標の計算 ---
         let elapsedTime = (Date.now() - startTime) / 1000;
-        let xPos = (elapsedTime % resetTime ) / resetTime *aw;
+        let xPos = (elapsedTime % resetTime ) / resetTime * aw;
 
-        // 右端に到達したときの処理
-        if(currentSweap.length > 0 && xPos < currentSweap[currentSweap.length - 1][0]){
-            // 現在の線を過去の線にコピーしてリセット
-            previousSweep = [...currentSweap];
-            currentSweap = [];
+        // 画面リセット判定 ＆ Auto Stop 処理
+        if(currentSweepCombined.length > 0 && xPos < currentSweepCombined[currentSweepCombined.length - 1][0]){
+            if (autoStopAtEdge) {
+                if (audioContext) audioContext.close();
+                isRunning = false;
+                startBtn.textContent = "Start";
+                statusDiv.textContent = "Auto Stopped (右端到達)";
+                return;
+            }
+            previousSweepCombined = [...currentSweepCombined];
+            previousSweepL = [...currentSweepL];
+            previousSweepR = [...currentSweepR];
+            currentSweepCombined = [];
+            currentSweepL = [];
+            currentSweepR = [];
             startTime = Date.now();
             xPos = 0;
         }
 
-        // 現在の座標を配列に保存
-        currentSweap.push([xPos,yPos]);
+        currentSweepCombined.push([xPos, yPosCombined]);
+        currentSweepL.push([xPos, yPosL]);
+        currentSweepR.push([xPos, yPosR]);
 
-        // --- 4. 過去の軌跡の描画 ---
-        if (previousSweep.length > 0) {
-            ampCtx.beginPath();
-            ampCtx.moveTo(previousSweep[0][0], previousSweep[0][1]);
-            for (let i = 1; i < previousSweep.length; i++) {
-                ampCtx.lineTo(previousSweep[i][0], previousSweep[i][1]);
+        // ==========================================
+        // 描画の分岐（プルダウンの状態に応じて切り替え）
+        // ==========================================
+        if (decayMode === 'combined') {
+            // ▼ 二乗和モード（黒）の描画 ▼
+            if (previousSweepCombined.length > 0) {
+                ampCtx.beginPath();
+                ampCtx.moveTo(previousSweepCombined[0][0], previousSweepCombined[0][1]);
+                for (let i = 1; i < previousSweepCombined.length; i++) ampCtx.lineTo(previousSweepCombined[i][0], previousSweepCombined[i][1]);
+                ampCtx.strokeStyle = "rgba(51, 51, 51, 0.4)"; 
+                ampCtx.lineWidth = 1;
+                ampCtx.stroke();
             }
-            ampCtx.strokeStyle = "rgba(51, 51, 51, 0.4)"; // 半透明のグレー
-            ampCtx.lineWidth = 1;
-            ampCtx.stroke();
-        }
+            if (currentSweepCombined.length > 0){
+                ampCtx.beginPath();
+                ampCtx.moveTo(currentSweepCombined[0][0], currentSweepCombined[0][1]);
+                for (let i = 1; i < currentSweepCombined.length; i++) ampCtx.lineTo(currentSweepCombined[i][0], currentSweepCombined[i][1]);
+                ampCtx.strokeStyle = "black";
+                ampCtx.lineWidth = 2;
+                ampCtx.stroke();
+            }
+            // ampCtx.fillStyle = "rgba(255, 255, 255, 0.8)";
+            // ampCtx.fillRect(10, 10, 130, 30);
+            // ampCtx.font = "bold 12px Arial";
+            // ampCtx.fillStyle = "black";
+            // ampCtx.fillText("Combined (L²+R²)", 20, 30);
 
-        // --- 5. 現在の軌跡の描画 ---
-        if (currentSweap.length > 0){
-            ampCtx.beginPath();
-            ampCtx.moveTo(currentSweap[0][0],currentSweap[0][1]);
-            for (let i = 1; i < currentSweap.length; i++){
-                ampCtx.lineTo(currentSweap[i][0], currentSweap[i][1]);
+        } else {
+            // ▼ 個別モード（キャンバス分割）の描画 ※履歴コメントアウト中 ▼
+            if (ampCtxL && ampCtxR) {
+                ampCtxL.fillStyle = '#ffffff'; ampCtxL.fillRect(0, 0, aw, ah);
+                ampCtxR.fillStyle = '#ffffff'; ampCtxR.fillRect(0, 0, aw, ah);
+
+                // --- Lのキャンバス描画 ---
+                if (currentSweepL.length > 0){
+                    ampCtxL.beginPath();
+                    ampCtxL.moveTo(currentSweepL[0][0], currentSweepL[0][1]);
+                    for (let i = 1; i < currentSweepL.length; i++) ampCtxL.lineTo(currentSweepL[i][0], currentSweepL[i][1]);
+                    ampCtxL.strokeStyle = "rgb(0, 0, 0)";
+                    ampCtxL.lineWidth = 2;
+                    ampCtxL.stroke();
+                }
+                // ampCtxL.fillStyle = "rgba(255, 255, 255, 0.8)";
+                // ampCtxL.fillRect(10, 10, 90, 30);
+                // ampCtxL.font = "bold 12px Arial";
+                // ampCtxL.fillStyle = "rgb(255, 99, 132)";
+                // ampCtxL.fillText("MIC 1 (L)", 20, 30);
+
+                // --- Rのキャンバス描画 ---
+                if (currentSweepR.length > 0){
+                    ampCtxR.beginPath();
+                    ampCtxR.moveTo(currentSweepR[0][0], currentSweepR[0][1]);
+                    for (let i = 1; i < currentSweepR.length; i++) ampCtxR.lineTo(currentSweepR[i][0], currentSweepR[i][1]);
+                    ampCtxR.strokeStyle = "rgb(0, 0, 0)";
+                    ampCtxR.lineWidth = 2;
+                    ampCtxR.stroke();
+                }
+                // ampCtxR.fillStyle = "rgba(255, 255, 255, 0.8)";
+                // ampCtxR.fillRect(10, 10, 90, 30);
+                // ampCtxR.font = "bold 12px Arial";
+                // ampCtxR.fillStyle = "rgb(54, 162, 235)";
+                // ampCtxR.fillText("MIC 2 (R)", 20, 30);
             }
-            ampCtx.strokeStyle = "black";
-            ampCtx.lineWidth = 2;
-            ampCtx.stroke();
         }
     }
 }
@@ -439,6 +617,24 @@ function drawFreqGuide(freq) {
 // ==========================================
 // 3. UIイベントリスナー
 // ==========================================
+
+const decayModeSelect = document.getElementById('decayModeSelect');
+if (decayModeSelect) {
+    decayModeSelect.addEventListener('change', (e) => {
+        decayMode = e.target.value;
+        
+        // ★ 選択に合わせてコンテナの表示を切り替える
+        if (decayMode === 'combined') {
+            decayCombinedContainer.style.display = 'block';
+            decaySeparateContainer.style.display = 'none';
+        } else {
+            decayCombinedContainer.style.display = 'none';
+            decaySeparateContainer.style.display = 'block';
+        }
+    });
+}
+
+
 startBtn.addEventListener('click', () => {
     if (isRunning) {
         if (audioContext) audioContext.close();
@@ -467,20 +663,43 @@ if (delayInput){
     delayInput.addEventListener('input',updateDelay);
 }
 
-// 画像保存
+const autoStopCheck = document.getElementById('autoStopCheck');
+if (autoStopCheck) {
+    autoStopCheck.addEventListener('change', (e) => {
+        autoStopAtEdge = e.target.checked;
+    });
+}
+
+// ==========================================
+// 画像保存 (即時と0.5秒後の2枚連続保存)
+// ==========================================
 document.querySelectorAll('.saveBtn').forEach(button => {
     button.addEventListener("click", function() {
         const canvasId = this.getAttribute("data-canvas-id");
         const targetCanvas = document.getElementById(canvasId);
         if (!targetCanvas) return;
-        const dataURL = targetCanvas.toDataURL("image/png");
-        const now = new Date();
-        const timestamp = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getDate().toString().padStart(2, '0')}_${now.getHours().toString().padStart(2, '0')}-${now.getMinutes().toString().padStart(2, '0')}-${now.getSeconds().toString().padStart(2, '0')}`;
-        const link = document.createElement("a");
-        link.href = dataURL;
-        link.download = `${canvasId}_${timestamp}.png`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+
+        // 画像を生成してダウンロードさせる共通の関数
+        const downloadCanvasImage = (suffix) => {
+            const dataURL = targetCanvas.toDataURL("image/png");
+            const now = new Date();
+            const timestamp = `${now.getFullYear()}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getDate().toString().padStart(2, '0')}_${now.getHours().toString().padStart(2, '0')}-${now.getMinutes().toString().padStart(2, '0')}-${now.getSeconds().toString().padStart(2, '0')}`;
+            
+            const link = document.createElement("a");
+            link.href = dataURL;
+            // ファイル名が被らないように、最後にsuffix（_0s, _0.5sなど）を付ける
+            link.download = `${canvasId}_${timestamp}_${suffix}.png`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        };
+
+        // 1枚目：ボタンを押した「瞬間」に保存
+        downloadCanvasImage("0s");
+
+        // 2枚目：0.5秒（500ミリ秒）待ってから保存
+        setTimeout(() => {
+            downloadCanvasImage("0-3s");
+        }, 300);
     });
 });
